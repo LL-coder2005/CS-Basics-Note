@@ -14,15 +14,15 @@ DHCP为客户端服务器模式
 - 默认网关：通过这个地址连接外网，通常是路由器的接口地址
 - 本地DNS服务器地址：进行域名解析  
 
-如果人工配置不仅工作量大，而且容易出错，DHCP协议营运而生，可以为主机动态配置上述参数  
+如果采用手动配置不仅工作量大，而且容易出错，DHCP因而被设计用于为主机提供自动化参数分配。
 
-当一台新主机连接到网络中时：
-1. 发现阶段： 主机源地址定为 **0.0.0.0** ，在255.255.255.255广播向可能的多个DHCP服务器请求。
-2. 提供阶段： 多个DHCP服务器在广播中提供多个ip地址等待主机选择
-3. 选择阶段： 主机广播选择某一个ip地址
-4. 确认阶段： 被选择的DHCP服务器广播确认请求，主机可以使用此地址  
+当一台新主机连接到网络时：
+1. 发现阶段：主机源地址为 **0.0.0.0**，向广播地址 255.255.255.255 发送DHCPDISCOVER，请求可用地址。
+2. 提供阶段：一个或多个DHCP服务器返回DHCPOFFER，提供可用IP地址及其它配置参数。
+3. 选择阶段：主机发送DHCPREQUEST广播，选择某一服务器的地址方案。
+4. 确认阶段：被选定的DHCP服务器发送DHCPACK确认，主机即可以使用该地址。
 
-直到四个阶段完成，主机才能绑定对应的ip地址  
+只有在上述四个阶段成功完成后，主机才能正式绑定并使用分配到的IP地址。
 
 等到到达租赁期一半的时间时，主机会向对应的那台DHCP服务器发送续租请求
 此时有三种可能性  
@@ -153,26 +153,31 @@ DHCP为客户端服务器模式
 ## Web与HTTP 协议  
 
 ### URL  
-统一资源定位符，格式 **协议：//主机名：端口号//路径**
+统一资源定位符（Uniform Resource Locator），通常格式为 `协议://主机名:端口/路径`。
 
 ## HTTP  
 - 端口号：80  
 - 运输层协议：TCP  
 
-## HTTP模型  
-1. 输入url
-2. 建立TCP连接
-3. 客户端发送HTTP请求  
-4. 服务器相应HTTP请求  
-5. 断开连接  
+## HTTP模型
 
-早期的HTTP是无连接的，当服务器向客户端发送响应报文后即断开连接。由于每个网页可能包含多个资源，每次都要重新建立连接过于麻烦，因此后面出现了连接性的，可以不断开连接多次请求资源  
+1. 客户端向URL发出请求。
+2. 建立TCP连接（通常基于三次握手）。
+3. 客户端发送HTTP请求报文。
+4. 服务端处理请求并返回HTTP响应报文。
+5. 连接关闭或复用（取决于版本与连接头）。
 
-对于无连接HTTP的优化，可以使用并行技术。即可以同时建立多个TCP连接请求多个资源  
-对于连接HTTP的优化，则采用了流水线的技术，客户端可以不等待服务器相应而一个接着一个的发送HTTP请求。  
+在HTTP/1.0中，默认使用短连接：每次请求/响应之后断开连接。对于包含多个资源的网页，这一方式会导致大量连接开销。
 
-早期HTTP同时还有无状态的特点，即客户端第一次连接和第二次连接一样对待。  
-直到cookie技术发展，当客户端第一次连接服务器时，服务器会生成一个cookie发送给客户端。客户端会将此cookie保存在本地。当第二次连接服务器时会将此cookie一同发往服务器。这样HTTP就有了记忆功能。当然现在的HTTP中的cookie更多是一把钥匙，和服务器的数据库相关联而不是直接保存数据  
+在HTTP/1.1中，引入了持久连接（`Connection: keep-alive`），可以在同一TCP连接内发送多个请求，减少握手延迟和资源消耗。
+
+HTTP/1.x 也有以下优化机制：
+- 并行连接：客户端可以同时建立多个TCP连接并行获取多个资源。
+- 请求管线化：在同一连接上连续发送多个请求，可减少等待时间，但受队首阻塞（Head-of-line blocking）限制。
+
+HTTP 的另一重要特性是无状态：每个请求独立处理，不保留上次请求的状态。会话机制通过应用层实现，例如Cookie、Session ID等。
+
+Cookie：服务器首次响应时通过 `Set-Cookie` 在客户端设置会话标识，客户端在后续请求中携带该Cookie，服务器据此识别用户状态。这种机制为HTTP提供了“状态关联”的能力，同时需配合安全策略（`HttpOnly`, `Secure`, `SameSite`）使用。
 
 ### HTTP版本演进  
 - HTTP 1.1  
@@ -180,6 +185,96 @@ DHCP为客户端服务器模式
     缺点：可能会出现队首堵塞，因为所有的资源请问按顺序执行，当第一个资源特别大时可能会导致后面的资源没办法按时加载。即使使用并行的技术，维护大量的TCP连接同样消耗大量资源  
 - HTTP 2  
     1. 多路复用：通过此技术解决了队首堵塞的问题，通过一个TCP连接即可处理。由于TCP的拥塞控制，多个TCP总是倾向于平分带宽，因此使用一个TCP连接不仅能让其更好的发挥作用，还能防止相互争抢带宽。  
-        成帧和交错传输机制：这是实现多路复用的核心
 
+      成帧和交错传输机制：这是实现多路复用的核心，把一个资源分成多个帧，可以先发送A的第一个帧，B的第一个帧....，实现多个资源通过一个TCP连接。  
+    2. 资源的主动推送：服务器可以主动向浏览器推送其可能需要的资源，当浏览器解析HTML文件时，所需的资源可能已经拥有。  
+    3. 请求优先级：服务器可以设置不同的优先级。优先级高的资源将先被推送  
+
+### Web 缓存器
+
+Web 缓存服务器用于缓存来自客户端的资源请求，以减少传输延迟并降低源服务器负载。
+
+当浏览器请求资源时，缓存服务器首先检查本地缓存是否命中。若命中，则直接返回缓存内容；若未命中，则向原始服务器请求资源，返回给客户端的同时在缓存中保存一份。
+
+该机制可显著提高多个用户请求同一资源时的响应速度，并减少带宽和服务器资源消耗。
+
+---
+
+### HTTP 报文结构
+
+- 请求报文：请求行 + 报头字段 + 空行 + 可选消息体
+  - 请求行：方法 URL 版本（例如 `GET /index.html HTTP/1.1`）
+  - 常见请求方法：`GET`、`POST`、`PUT`、`DELETE`、`HEAD`、`OPTIONS`、`PATCH`、`TRACE`、`CONNECT`
+  - 常见请求头：`Host`、`User-Agent`、`Accept`、`Accept-Encoding`、`Accept-Language`、`Connection`、`Content-Type`、`Content-Length`、`Cookie`、`Referer`、`Authorization`、`Origin`
+
+- 响应报文：状态行 + 报头字段 + 空行 + 可选消息体
+  - 状态行：版本 状态码 原因短语（例如 `HTTP/1.1 200 OK`）
+  - 常见响应头：`Date`、`Server`、`Content-Type`、`Content-Length`、`Set-Cookie`、`Cache-Control`、`Expires`、`Last-Modified`、`ETag`、`Location`、`Access-Control-Allow-Origin`、`Keep-Alive`
+
+- 报文头类型
+  - 通用头（General）：对请求/响应都适用，例如 `Cache-Control`、`Connection`、`Date`、`Via`。
+  - 请求头（Request）：例如 `Accept`、`Host`、`Authorization`、`Cookie`。
+  - 响应头（Response）：例如 `Location`、`Server`、`Set-Cookie`。
+  - 实体头（Entity）：包含资源表示信息，例如 `Content-Type`、`Content-Length`、`Content-Encoding`、`Content-Language`。
+
+### HTTP 方法与语义（必会）
+
+- GET：读取资源，安全、幂等，无请求体（通常）；缓存友好。不能用于修改服务端状态。
+- HEAD：与 GET 相同但无消息体，用于获取头信息、检测资源是否变化。
+- POST：创建/提交数据，不幂等。常用于表单提交和API写操作。
+- PUT：更新或创建资源，幂等（同样请求多次结果一致）。
+- DELETE：删除资源，幂等（逻辑上）。
+- PATCH：部分更新资源，非幂等。
+- OPTIONS：查询服务器或目标资源支持的方法和功能（跨域预检）。
+- CONNECT：创建到代理的隧道（HTTPS透传）。
+- TRACE：追踪请求路径（调试用途），应谨慎使用。
+
+### HTTP 状态码（核心）
+
+- 1xx（信息性）：`100 Continue`、`101 Switching Protocols`。
+- 2xx（成功）：`200 OK`、`201 Created`、`202 Accepted`、`204 No Content`。
+- 3xx（重定向）：`301 Moved Permanently`、`302 Found`、`303 See Other`、`307 Temporary Redirect`、`308 Permanent Redirect`。
+- 4xx（客户端错误）：`400 Bad Request`、`401 Unauthorized`、`403 Forbidden`、`404 Not Found`、`405 Method Not Allowed`、`412 Precondition Failed`、`429 Too Many Requests`。
+- 5xx（服务器错误）：`500 Internal Server Error`、`502 Bad Gateway`、`503 Service Unavailable`、`504 Gateway Timeout`。
+
+### 连接管理与性能优化
+
+- HTTP/1.0 默认短连接；HTTP/1.1 默认持久连接（Connection: keep-alive）。
+- `Connection: close` 关闭持久连接。
+- `Keep-Alive` 可指定超时与最大请求数（服务器可选支持）。
+- HTTP/1.1 管线化：在同一TCP连接中可以发送多个请求无需等待响应，但被队首堵塞（Head-of-line blocking）限制。
+- HTTP/2 多路复用：单一TCP连接承载多个流，消除管线化缺陷，避免队首堵塞，提升性能。
+- HTTP/3（QUIC）基于UDP，不依赖TCP，解决TCP握手与队首堵塞问题。
+
+
+
+
+### REST 和 API 设计要点
+
+- REST原则：资源URI表示名词；使用HTTP方法表达操作；无状态；可缓存；统一接口。
+- 版本控制：URI版本(`/v1/users`)或请求头版本(`Accept: application/vnd.example.v1+json`)。
+- 常用状态码：`200`、`201`、`204`、`400`、`401`、`403`、`404`、`409`、`422`、`500`。
+
+
+### 典型 HTTP 请求流程（补充）
+
+1. DNS解析域名到IP。
+2. 建立TCP三次握手（SYN、SYN-ACK、ACK）。
+3. 如果HTTPS，TLS握手完成。
+4. 发送HTTP请求报文。
+5. 服务器处理并返回HTTP响应报文。
+6. 浏览器解析HTML、CSS、JS、图片，发起额外资源请求。
+7. 持久连接下可复用TCP连接；非持久则关闭。
+8. 浏览器根据Cache-Control等做缓存。
+
+### 常见面试考点
+
+- 分别解释 HTTP/1.0、HTTP/1.1、HTTP/2、HTTP/3 优势。
+- TCP 连接与 HTTP 请求关系，为什么HTTP/2允许多路复用。
+- 解释 HTTP 状态码 `304` 与 `200` 的区别。
+- 说明 `Cache-Control: no-cache` vs `no-store`。
+- 说明 `CORS` 的预检过程与 `Access-Control-Allow-Origin`。
+- 说明 HTTPS 的证书链验证与握手流程。
+
+---
 
